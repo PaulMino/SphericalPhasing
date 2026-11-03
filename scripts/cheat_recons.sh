@@ -13,7 +13,7 @@
 #SBATCH --ntasks=1                    # Exécuter une seule tâche
 #SBATCH --time=0-06:00:00             # Délai max = 7 jours
 
-#SBATCH --mail-user=arsene.ferriere@lpnhe.in2p3.fr   # Où envoyer l'e-mail
+#SBATCH --mail-user=minodier@iap.fr   # Où envoyer l'e-mail
 #SBATCH --mail-type=END,FAIL          # �~Ivénements déclencheurs (NONE, BEGIN, END, FAIL, ALL)
 
 #SBATCH --licenses=sps                # Déclaration des ressources de stockage et/ou logicielles
@@ -21,4 +21,5 @@
 # Commandes à soumettre :
 
 source /sps/grand/aferrier/ccenvtest/bin/activate
+export PYTHONPATH=/pbs/home/p/pminodier/HERON/HERON_recons/SphericalPhasing:$PYTHONPATH
 python scripts/cheat_recons.py $1
