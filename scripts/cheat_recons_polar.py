@@ -47,7 +47,6 @@ def parse_args():
     parser.add_argument('--save_path', type=str, help='Path to save results', default=None)
     parser.add_argument('--f_min', type=float, help='Minimum frequency for bandpass filter', default=50)
     parser.add_argument('--f_max', type=float, help='Maximum frequency for bandpass filter', default=200)
-    parser.add_argument('--noise_std', type=float, help='Standard deviation of noise to add', default=13)
     parser.add_argument('--jitter_std', type=float, help='Standard deviation of timing jitter to add', default=0)
     parser.add_argument('--intens_method', type=str, choices=['amplitude', 'power'], help='Method for intensity calculation', default='amplitude')
 
@@ -72,12 +71,31 @@ def parse_args():
             if p not in valid_polars:
                 raise argparse.ArgumentTypeError(f"Invalid polarization: {p}. Valid options are: {', '.join(valid_polars)}")
         return tuple(sorted(set(p for p in polars if p in valid_polars)))
+    
+    def parse_noise_std(noise_param):
+        # If only one value is given (e.g., "13"), return a tuple with the same value for all polarizations
+        # If a comma-separated list is given (e.g., "13,15,20"), return a tuple of floats.
+        if ',' in noise_param:
+            values = tuple(float(x.strip()) for x in noise_param.split(','))
+            if len(values) != 3:
+                raise argparse.ArgumentTypeError("If specifying multiple noise_std values, provide exactly three values for X, Y, Z polarizations.")
+            return values
+        else:
+            value = float(noise_param)
+            return (value, value, value)
 
     parser.add_argument(
         '--polars',
         type=parse_polars,
         default=['X', 'Y', 'Z'],
         help='Polarizations to consider (comma-separated, e.g., "X,Y,Z")'
+    )
+
+    parser.add_argument(
+        '--noise_std',
+        type=parse_noise_std,
+        default=(13, 13, 13),
+        help='Noise standard deviation for each polarization (single value or comma-separated for X,Y,Z)'
     )
 
     args = parser.parse_args()
@@ -147,7 +165,8 @@ def main(config: Config):
                                                                       signals, 
                                                                       config,
                                                                       polar=config.polars)
-        amps = np.max( np.linalg.norm(signals[1:], axis=0), axis=-1)
+        amps = np.max(np.linalg.norm(signals[1:], axis=0), axis=-1)
+        scaled_amps = np.max(np.linalg.norm(signals[1:] / config.noise_std[:, np.newaxis, np.newaxis], axis=0), axis=-1)
         k_layout = np.average(antenna_pos, axis=0, weights=amps) - xmax_pos
         k_layout /= np.linalg.norm(k_layout)
         theta_layout = np.arccos(-k_layout[2])
@@ -180,16 +199,16 @@ def main(config: Config):
             "tau_pos_z": tau_pos[2],
             'max_amp': np.max(amps),
             "ave_amp": np.mean(amps),
-            "nb_above5sigma": np.sum(amps > 5 * config.noise_std),
-            "nb_above3sigma": np.sum(amps > 3 * config.noise_std),
-            "nb_above1sigma": np.sum(amps > 1 * config.noise_std),
+            "nb_above5sigma": np.sum(scaled_amps > 5),
+            "nb_above3sigma": np.sum(scaled_amps > 3),
+            "nb_above1sigma": np.sum(scaled_amps > 1),
             "energy": en_tau,
             "en_nu": en_nu,
         })
         if not os.path.exists(config.save_path):
             os.makedirs(config.save_path)
         np.save(os.path.join(config.save_path, f'{name_prefix}{eventi}_intensity_map.npy'), All_intensity)
-        np.save(os.path.join(config.save_path, f'{name_prefix}{eventi}_amps.npy'), amps)
+
         if (i + 1) % 50 == 0:
             df = pd.DataFrame(results)
             df.to_csv(os.path.join(config.save_path, f'{name_prefix}reconstruction_results.csv'), index=False)
@@ -198,20 +217,6 @@ def main(config: Config):
     df.to_csv(os.path.join(config.save_path, f'{name_prefix}reconstruction_results.csv'), index=False)
     t_end = time()
     print(f"Reconstruction completed in {t_end - t_0:.2f} seconds for {Nevents} events.")
-    plt.figure()
-    plt.hist(df['angular_error_deg'], bins=20, edgecolor='black')
-    plt.xlabel('Angular Error (degrees)')
-    plt.ylabel('Number of Events')
-    plt.title('Angular Error Distribution')
-
-    plt.figure()
-    plt.hist(df['theta_error_deg'], bins=20, edgecolor='black', alpha=0.7, label='Theta Error')
-    plt.hist(df['phi_error_deg'], bins=20, edgecolor='black', alpha=0.7, label='Phi Error')
-    plt.xlabel('Angle Error (degrees)')
-    plt.ylabel('Number of Events')
-    plt.title('Theta and Phi Error Distribution')
-    plt.legend()
-    plt.show()
         
 
 if __name__ == "__main__":

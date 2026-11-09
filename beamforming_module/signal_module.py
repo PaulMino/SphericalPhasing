@@ -182,11 +182,19 @@ def process_signals_Efield(efields, azim, zen, fmin, fmax, noise_std, jitter_std
 
     signals = filter_Efields(efields, fmin, fmax)
 
-    if noise_std !=0:
-        noise = np.random.normal(0, noise_std, size=np.shape(signals[1:,:,:]))
+    # Modified noise_std to be a 3-element array for X, Y, Z polarizations
+    if isinstance(noise_std, (int, float)):
+        noise_std = np.array([noise_std, noise_std, noise_std])
+        
+    if noise_std != (0, 0, 0):
+        noise_std = np.array(noise_std)
+        noise_x = np.random.normal(0, noise_std[0], size=np.shape(signals[1,:,:]))
+        noise_y = np.random.normal(0, noise_std[1], size=np.shape(signals[2,:,:]))
+        noise_z = np.random.normal(0, noise_std[2], size=np.shape(signals[3,:,:]))
+        noise = np.stack((noise_x, noise_y, noise_z), axis=0)
         noise_filtered = filter_Efields(np.vstack((signals[0:1,:,:], noise)), fmin, fmax)[1:,:,:]
-        std_filtered = np.mean( np.std(noise_filtered[:,:,:], axis=-1) )
-        noise_scaled = noise_filtered * (noise_std / std_filtered) 
+        mean_std_filtered = np.mean(np.std(noise_filtered[:,:,:], axis=-1), axis=-1)
+        noise_scaled = noise_filtered * (noise_std / mean_std_filtered)[:, np.newaxis, np.newaxis]
         signals[1:,:,:] += noise_scaled
 
     if jitter_std !=0:
